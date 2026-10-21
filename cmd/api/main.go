@@ -30,8 +30,11 @@ func main() {
 			"status": "ok",
 		})
 	})
-    
-	mux.HandleFunc("POST /shorten", linkHandler.Shorten)
+	limiter := handlers.NewRateLimiter(10, time.Minute)
+	mux.Handle(
+		"POST /shorten",
+		limiter.Middleware(http.HandlerFunc(linkHandler.Shorten)),
+	)
 	mux.HandleFunc("GET /{code}", linkHandler.Redirect)
 
 	server := &http.Server{
