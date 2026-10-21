@@ -30,7 +30,7 @@ func main() {
 			"status": "ok",
 		})
 	})
-
+    
 	mux.HandleFunc("POST /shorten", linkHandler.Shorten)
 	mux.HandleFunc("GET /{code}", linkHandler.Redirect)
 
