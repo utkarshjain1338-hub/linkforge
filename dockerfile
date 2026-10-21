@@ -17,6 +17,8 @@ WORKDIR /app
 
 COPY --from=builder /out/linkforge /app/linkforge
 
+COPY --from=builder /src/web /app/web
+
 USER appuser
 
 EXPOSE 8080

@@ -1,0 +1,109 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b1020">
+    <title>LinkForge — Shorten your links</title>
+    <meta name="description" content="Turn long URLs into short, shareable links with LinkForge.">
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+</head>
+<body>
+    <main class="page">
+        <nav class="navbar">
+            <a class="brand" href="/">
+                <span class="brand-icon">L</span>
+                LinkForge
+            </a>
+            <span class="status"><span class="status-dot"></span> Simple. Fast. Reliable.</span>
+        </nav>
+
+        <section class="hero">
+            <div class="eyebrow">
+                <span>✦</span> YOUR LINKS, REIMAGINED
+            </div>
+
+            <h1>Long links.<br><span>Short story.</span></h1>
+
+            <p class="subtitle">
+                Clean up your URLs in seconds. Create short links
+                that are easy to share, remember, and use.
+            </p>
+
+            <form id="shorten-form" class="shortener">
+                <label for="url-input">Your destination URL</label>
+
+                <div class="input-row">
+                    <span class="link-icon">↗</span>
+                    <input
+                        id="url-input"
+                        type="url"
+                        placeholder="https://example.com/your/very/long/link"
+                        autocomplete="url"
+                        required
+                    >
+                    <button id="shorten-button" type="submit">
+                        <span id="button-text">Shorten URL</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                </div>
+
+                <p class="hint">Paste any valid HTTP or HTTPS link to get started.</p>
+                <p id="error-message" class="error" role="alert" hidden></p>
+            </form>
+
+            <section id="result" class="result" aria-live="polite" hidden>
+                <div class="result-heading">
+                    <span class="success-icon">✓</span>
+                    <div>
+                        <h2>Your link is ready!</h2>
+                        <p>Your shorter link has been created.</p>
+                    </div>
+                </div>
+
+                <div class="result-box">
+                    <a id="short-url" href="#" target="_blank" rel="noopener noreferrer"></a>
+                    <button id="copy-button" type="button">Copy link</button>
+                </div>
+
+                <p class="destination-label">REDIRECTS TO</p>
+                <p id="target-url" class="target-url"></p>
+                <p id="copy-message" class="copy-message" role="status"></p>
+            </section>
+
+            <div class="features">
+                <div class="feature">
+                    <span class="feature-icon">⚡</span>
+                    <div>
+                        <strong>Quick & easy</strong>
+                        <p>Shorten links in seconds</p>
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <span class="feature-icon">↗</span>
+                    <div>
+                        <strong>Easy to share</strong>
+                        <p>One clean link, anywhere</p>
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <span class="feature-icon">⌘</span>
+                    <div>
+                        <strong>Built with Go</strong>
+                        <p>Powered by your own API</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <span>© 2026 LinkForge</span>
+            <span>Crafted with Go & ☕</span>
+        </footer>
+    </main>
+</body>
+</html>

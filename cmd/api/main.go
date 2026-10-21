@@ -35,6 +35,22 @@ func main() {
 		"POST /shorten",
 		limiter.Middleware(http.HandlerFunc(linkHandler.Shorten)),
 	)
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+    if r.URL.Path != "/" {
+        http.NotFound(w, r)
+        return
+    }
+
+    http.ServeFile(w, r, "/app/web/index.html")
+    })
+
+    mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
+        http.ServeFile(w, r, "/app/web/style.css")
+    })
+
+    mux.HandleFunc("GET /app.js", func(w http.ResponseWriter, r *http.Request) {
+        http.ServeFile(w, r, "/app/web/app.js")
+    })
 	mux.HandleFunc("GET /{code}", linkHandler.Redirect)
 
 	server := &http.Server{
