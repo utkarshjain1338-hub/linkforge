@@ -1,24 +1,28 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
-type LinkStore struct {
-	mu    sync.RWMutex
-	links map[string]string
+type LinkRepository interface {
+	CreateLink(ctx context.Context, targetURL string) (string, error)
+	GetLink(ctx context.Context, code string) (string, error)
 }
 
-func NewLinkStore() *LinkStore {
-	return &LinkStore{
-		links: make(map[string]string),
-	}
+type LinkHandler struct {
+	db LinkRepository
+}
+
+func NewLinkHandler(db LinkRepository) *LinkHandler {
+	return &LinkHandler{db: db}
 }
 
 type shortenRequest struct {
@@ -31,9 +35,10 @@ type shortenResponse struct {
 	TargetURL string `json:"target_url"`
 }
 
-func (s *LinkStore) Shorten(w http.ResponseWriter, r *http.Request) {
-	var req shortenRequest
+func (h *LinkHandler) Shorten(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
+	var req shortenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
@@ -41,24 +46,25 @@ func (s *LinkStore) Shorten(w http.ResponseWriter, r *http.Request) {
 
 	req.URL = strings.TrimSpace(req.URL)
 	parsed, err := url.ParseRequestURI(req.URL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if err != nil ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" {
 		http.Error(w, "a valid HTTP or HTTPS URL is required", http.StatusBadRequest)
 		return
 	}
 
-	bytes := make([]byte, 4)
-	if _, err := rand.Read(bytes); err != nil {
-		http.Error(w, "could not generate code", http.StatusInternalServerError)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	code, err := h.db.CreateLink(ctx, req.URL)
+	if err != nil {
+		http.Error(w, "could not create short link", http.StatusInternalServerError)
 		return
 	}
-	code := hex.EncodeToString(bytes)
-
-	s.mu.Lock()
-	s.links[code] = req.URL
-	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+
 	_ = json.NewEncoder(w).Encode(shortenResponse{
 		Code:      code,
 		ShortURL:  "http://localhost:8080/" + code,
@@ -66,15 +72,20 @@ func (s *LinkStore) Shorten(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *LinkStore) Redirect(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
-	s.mu.RLock()
-	target, ok := s.links[code]
-	s.mu.RUnlock()
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
 
-	if !ok {
-		http.NotFound(w, r)
+	target, err := h.db.GetLink(ctx, code)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.Error(w, "could not retrieve link", http.StatusInternalServerError)
 		return
 	}
 

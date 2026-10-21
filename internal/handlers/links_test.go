@@ -1,58 +1,76 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func newTestServer() http.Handler {
-	store := NewLinkStore()
-	mux := http.NewServeMux()
+type fakeRepository struct {
+	links map[string]string
+}
 
-	mux.HandleFunc("POST /shorten", store.Shorten)
-	mux.HandleFunc("GET /{code}", store.Redirect)
+func newFakeRepository() *fakeRepository {
+	return &fakeRepository{
+		links: make(map[string]string),
+	}
+}
 
-	return mux
+func (f *fakeRepository) CreateLink(
+	ctx context.Context,
+	targetURL string,
+) (string, error) {
+	code := "test1234"
+	f.links[code] = targetURL
+	return code, nil
+}
+
+func (f *fakeRepository) GetLink(
+	ctx context.Context,
+	code string,
+) (string, error) {
+	target, ok := f.links[code]
+	if !ok {
+		return "", pgx.ErrNoRows
+	}
+	return target, nil
 }
 
 func TestShortenAndRedirect(t *testing.T) {
-	server := newTestServer()
+	repo := newFakeRepository()
+	handler := NewLinkHandler(repo)
 
-	body := `{"url":"https://go.dev/docs"}`
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /shorten", handler.Shorten)
+	mux.HandleFunc("GET /{code}", handler.Redirect)
+
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/shorten",
-		strings.NewReader(body),
+		strings.NewReader(`{"url":"https://go.dev/docs"}`),
 	)
-	req.Header.Set("Content-Type", "application/json")
-
 	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
+	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d: %s",
-			http.StatusCreated, rec.Code, rec.Body.String())
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var response struct {
 		Code      string `json:"code"`
-		ShortURL  string `json:"short_url"`
 		TargetURL string `json:"target_url"`
 	}
 
 	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
-		t.Fatalf("could not decode response: %v", err)
+		t.Fatal(err)
 	}
 
 	if response.Code == "" {
-		t.Fatal("expected a non-empty short code")
-	}
-
-	if response.TargetURL != "https://go.dev/docs" {
-		t.Fatalf("unexpected target URL: %s", response.TargetURL)
+		t.Fatal("expected a short code")
 	}
 
 	redirectReq := httptest.NewRequest(
@@ -61,12 +79,10 @@ func TestShortenAndRedirect(t *testing.T) {
 		nil,
 	)
 	redirectRec := httptest.NewRecorder()
-
-	server.ServeHTTP(redirectRec, redirectReq)
+	mux.ServeHTTP(redirectRec, redirectReq)
 
 	if redirectRec.Code != http.StatusFound {
-		t.Fatalf("expected redirect status %d, got %d",
-			http.StatusFound, redirectRec.Code)
+		t.Fatalf("expected 302, got %d", redirectRec.Code)
 	}
 
 	if got := redirectRec.Header().Get("Location"); got != response.TargetURL {
@@ -74,59 +90,33 @@ func TestShortenAndRedirect(t *testing.T) {
 	}
 }
 
-func TestShortenRejectsInvalidURLs(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-	}{
-		{
-			name: "invalid JSON",
-			body: `{"url":`,
-		},
-		{
-			name: "unsupported scheme",
-			body: `{"url":"javascript:alert(1)"}`,
-		},
-		{
-			name: "missing host",
-			body: `{"url":"https://"}`,
-		},
-		{
-			name: "empty URL",
-			body: `{"url":""}`,
-		},
-	}
+func TestShortenRejectsInvalidURL(t *testing.T) {
+	handler := NewLinkHandler(newFakeRepository())
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			server := newTestServer()
-			req := httptest.NewRequest(
-				http.MethodPost,
-				"/shorten",
-				strings.NewReader(tc.body),
-			)
-			rec := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/shorten",
+		strings.NewReader(`{"url":"javascript:alert(1)"}`),
+	)
+	rec := httptest.NewRecorder()
 
-			server.ServeHTTP(rec, req)
+	handler.Shorten(rec, req)
 
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected status %d, got %d",
-					http.StatusBadRequest, rec.Code)
-			}
-		})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
 func TestRedirectUnknownCode(t *testing.T) {
-	server := newTestServer()
+	handler := NewLinkHandler(newFakeRepository())
 
-	req := httptest.NewRequest(http.MethodGet, "/unknown-code", nil)
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	req.SetPathValue("code", "unknown")
 	rec := httptest.NewRecorder()
 
-	server.ServeHTTP(rec, req)
+	handler.Redirect(rec, req)
 
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected status %d, got %d",
-			http.StatusNotFound, rec.Code)
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }

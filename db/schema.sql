@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS links(
+    code   VARCHAR(8) PRIMARY KEY,
+    target_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);    
