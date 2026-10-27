@@ -18,7 +18,7 @@ services:
       timeout: 3s
       retries: 10
   api:
-    build: .
+    image: ghcr.io/utkarshjain1338-hub/linkforge:latest
     container_name: linkforge-api
     restart: unless-stopped
     environment:
