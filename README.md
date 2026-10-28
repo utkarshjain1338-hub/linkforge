@@ -2,19 +2,22 @@
 
 **A self-hosted URL shortener built with Go, PostgreSQL, Docker, and Nginx.**
 
-LinkForge turns long URLs into short, shareable links through a simple web interface and REST API. It features persistent storage, HTTP redirects, and rate limiting, with a containerized setup designed to be easy to run and deploy.
+LinkForge turns long URLs into short, shareable links through a responsive web interface and REST API. It features persistent PostgreSQL storage, HTTP redirects, rate limiting, and a containerized deployment workflow powered by Docker Compose and GitHub Actions.
+
+The project includes automated testing, vulnerability checks, Docker image scanning, and publishing container images to GitHub Container Registry (GHCR).
 
 ## ✨ Features
 
 - **URL shortening:** Convert long HTTP and HTTPS URLs into short links.
-- **Web interface:** A clean, responsive frontend built with HTML, CSS, and JavaScript.
+- **Web interface:** Responsive frontend built with HTML, CSS, and JavaScript.
 - **REST API:** Create short links programmatically.
-- **Persistent storage:** Store links in PostgreSQL so they survive container restarts.
-- **HTTP redirects:** Redirect short links to their original destinations.
+- **Persistent storage:** Store short-code mappings in PostgreSQL.
+- **HTTP redirects:** Redirect visitors to their original URLs.
 - **Rate limiting:** Limit requests to the URL-shortening endpoint.
-- **Reverse proxy:** Use Nginx as the entry point for HTTP traffic.
-- **Containerized deployment:** Run the application and database using Docker Compose.
-- **Automated checks:** Run Go tests and build checks through GitHub Actions.
+- **Reverse proxy:** Route HTTP traffic through Nginx.
+- **Containerized deployment:** Run the application and database with Docker Compose.
+- **Continuous integration:** Automate Go tests, builds, and security checks with GitHub Actions.
+- **Container registry:** Build and publish Docker images to GitHub Container Registry (GHCR).
 
 ## 🛠️ Tech Stack
 
@@ -26,25 +29,30 @@ LinkForge turns long URLs into short, shareable links through a simple web inter
 | Docker | Application containerization |
 | Docker Compose | Multi-container orchestration |
 | Nginx | Reverse proxy |
-| GitHub Actions | Continuous integration |
+| GitHub Actions | CI/CD automation |
+| GHCR | Container image storage |
+| Trivy | Vulnerability and configuration scanning |
+| govulncheck | Go dependency vulnerability checks |
 
 ## 🏗️ Architecture
 
 ```text
-             User / Browser
-                    |
-                    v
-             Nginx :80
-                    |
-                    v
-              Go API :8080
-               /        \
-              v          v
-       Web Interface   PostgreSQL
-       HTML/CSS/JS      Link Storage
+                 User / Browser
+                       |
+                       v
+                 Nginx :80
+                       |
+                       v
+                 Go API :8080
+                   /       \
+                  v         v
+           Web Interface  PostgreSQL
+           HTML/CSS/JS    Link Storage
 ```
 
-The browser loads the frontend through Nginx. JavaScript sends requests to the Go API, which validates submitted URLs and stores short-code mappings in PostgreSQL. When someone visits a short link, the API looks up the destination and returns an HTTP redirect.
+Nginx acts as the HTTP entry point and forwards requests to the Go API. The API serves the application routes, validates submitted URLs, and stores short-code mappings in PostgreSQL. When a visitor opens a short link, the API looks up its destination and returns an HTTP redirect.
+
+The services communicate over Docker Compose's internal network. PostgreSQL and the API do not need to be exposed directly to the host for Nginx to communicate with them.
 
 ## 📁 Project Structure
 
@@ -70,12 +78,15 @@ linkforge/
 │   └── app.js
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml
+│       └── publish.yml
 ├── compose.yml
 ├── Dockerfile
 ├── go.mod
 └── go.sum
 ```
+
+*The workflow filenames above assume the CI and image-publishing workflows are named `ci.yml` and `publish.yml` in your repository.*
 
 ## 🚀 Getting Started
 
@@ -84,26 +95,39 @@ linkforge/
 Install the following tools:
 
 - [Git](https://git-scm.com/)
-- [Go](https://go.dev/dl/)
 - [Docker Engine](https://docs.docker.com/engine/install/)
 - [Docker Compose](https://docs.docker.com/compose/)
 
-### 1. Clone the repository
+Go is also useful if you want to run tests or build the application directly outside Docker.
 
-Replace the repository URL below with your GitHub repository URL if it differs.
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/utkarshjain1338-hub/linkforge.git
 cd linkforge
 ```
 
-### 2. Start the application
+### 2. Start the application locally
+
+For a source-based development deployment:
 
 ```bash
 docker compose -f compose.yml up -d --build
 ```
 
-Docker Compose builds the Go application, starts PostgreSQL, and starts Nginx.
+This builds the Go application image from the local source and starts the services defined in `compose.yml`.
+
+Check service status:
+
+```bash
+docker compose ps
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
 
 ### 3. Open the website
 
@@ -113,15 +137,51 @@ Visit:
 
 Paste a valid URL, click **Shorten URL**, and copy the generated short link.
 
-### 4. Check application health
+The default Compose configuration binds published ports to `127.0.0.1`, keeping access local to the machine running Docker.
+
+### 4. Use the published GHCR image
+
+LinkForge's application image is published to GitHub Container Registry:
+
+```text
+ghcr.io/utkarshjain1338-hub/linkforge:latest
+```
+
+To pull the image:
+
+```bash
+docker pull ghcr.io/utkarshjain1338-hub/linkforge:latest
+```
+
+To deploy using the published image, configure the `api` service in `compose.yml` with the image reference instead of `build: .`:
+
+```yaml
+api:
+  image: ghcr.io/utkarshjain1338-hub/linkforge:latest
+```
+
+Keep the rest of the API service configuration, environment variables, dependencies, and networking settings consistent with your project. Ensure the local Compose file, Nginx configuration, and database schema file are present.
+
+Then start or update the stack:
+
+```bash
+docker compose pull api
+docker compose up -d
+```
+
+> **Note:** The `build: .` approach is intended for local source-based development. The GHCR image approach runs the published application image. Choose the approach that matches your deployment.
+
+### 5. Check application health
+
+If the API exposes a `/health` endpoint, test it with:
 
 ```bash
 curl -i http://localhost/health
 ```
 
-The health endpoint should return a successful response when the application is running.
+A successful response indicates that the health endpoint is responding. The actual health response depends on the implementation.
 
-### 5. Create a short link using the API
+### 6. Create a short link using the API
 
 ```bash
 curl -i -X POST http://localhost/shorten \
@@ -129,7 +189,7 @@ curl -i -X POST http://localhost/shorten \
   -d '{"url":"https://example.com"}'
 ```
 
-A successful request returns HTTP `201 Created` with a JSON response similar to:
+A successful request returns `201 Created` with a JSON response similar to:
 
 ```json
 {
@@ -139,9 +199,9 @@ A successful request returns HTTP `201 Created` with a JSON response similar to:
 }
 ```
 
-The short code and response values above are examples; the actual code is generated by the application.
+The values above are illustrative; the application generates the actual short code.
 
-### 6. Follow a short link
+### 7. Follow a short link
 
 Use the `short_url` returned by the API:
 
@@ -149,23 +209,23 @@ Use the `short_url` returned by the API:
 curl -i http://localhost/a1b2c3d4
 ```
 
-The server should respond with an HTTP redirect to the original URL.
+An existing short code should return an HTTP redirect to its original destination.
 
-### 7. Stop the application
+### 8. Stop the application
 
 ```bash
 docker compose -f compose.yml down
 ```
 
-PostgreSQL data is stored in a named Docker volume and is preserved when containers are stopped this way.
+This stops and removes the Compose containers and network while preserving data stored in named volumes.
 
-**Warning:** `docker compose -f compose.yml down -v` removes the named volume and deletes the stored database data.
+**Warning:** `docker compose down -v` also removes named volumes and can delete your stored PostgreSQL data.
 
 ## 📡 API Reference
 
 ### `GET /health`
 
-Checks the application's health endpoint.
+Checks the application's health endpoint, if enabled by the application.
 
 ### `POST /shorten`
 
@@ -181,24 +241,88 @@ Creates a short link.
 
 **Successful response:** `201 Created`
 
-Returns the generated code, short URL, and original destination.
+Returns the generated short code, short URL, and original destination.
 
-Invalid request bodies or unsupported URL schemes are rejected.
+Invalid request bodies and unsupported URL schemes should be rejected by the handler.
 
 ### `GET /{code}`
 
 Looks up a short code and redirects the client to its original URL.
 
 - `302 Found` — the short link exists and redirects.
-- `404 Not Found` — the code does not exist.
+- `404 Not Found` — the short code does not exist.
 
 ## ⚙️ Configuration
 
-The application uses the `DATABASE_URL` environment variable to configure PostgreSQL connectivity.
+The application uses the `DATABASE_URL` environment variable to connect to PostgreSQL.
 
-The Docker Compose configuration supplies a database URL pointing to the `db` service. The database credentials currently defined in `compose.yml` are intended for local development; change them and use appropriate secret management before deploying publicly.
+Within Docker Compose, the database hostname should be the service name, typically `db`, rather than `localhost`. Docker Compose provides internal DNS so services on the same Compose network can resolve one another by service name.
 
-The application and Nginx ports are bound to `127.0.0.1` in the current Compose configuration, keeping them accessible from the local machine rather than exposing them directly to the network.
+Example connection string for a local development environment:
+
+```text
+postgres://linkforge:devpassword@db:5432/linkforge?sslmode=disable
+```
+
+Use credentials appropriate to your environment. Do not reuse development credentials for a public deployment.
+
+### Local-only access
+
+The default port bindings should use loopback addresses:
+
+```yaml
+ports:
+  - "127.0.0.1:80:80"
+```
+
+The API can use Docker's internal networking without publishing port `8080` on the host if Nginx is its entry point. PostgreSQL can likewise remain internal if the host does not need direct database access.
+
+With loopback bindings, the website is intended to be accessed from the same machine running Docker, rather than directly from other devices on the LAN.
+
+## 🔄 CI/CD Pipeline
+
+GitHub Actions automates checks and container image publishing.
+
+### Continuous integration
+
+The CI workflow can run on pushes to `main` and pull requests targeting `main`. Its checks include:
+
+- Go unit tests using `go test ./...`
+- Go application build checks
+- Go dependency vulnerability checks with `govulncheck`
+- Docker image build verification
+- Filesystem vulnerability, secret, and misconfiguration scanning with Trivy
+- Docker image vulnerability scanning with Trivy
+
+### Container image publishing
+
+The GHCR publishing workflow builds the Docker image and publishes tags to:
+
+```text
+ghcr.io/utkarshjain1338-hub/linkforge:latest
+```
+
+It can also publish a commit-specific tag, allowing a particular build to be identified.
+
+The publishing workflow uses GitHub Actions' `GITHUB_TOKEN` with package write permissions. The package's visibility and access settings determine whether authentication is required when pulling the image.
+
+### Deployment workflow
+
+The deployment process is:
+
+1. Push application changes to GitHub.
+2. GitHub Actions runs the configured CI checks.
+3. The publishing workflow builds and pushes the application image to GHCR.
+4. On the machine running LinkForge, pull the updated image and recreate the API service.
+
+For a manual update:
+
+```bash
+docker compose pull api
+docker compose up -d api
+```
+
+These commands update the API service according to the image reference in Compose. They do not automatically configure a remote deployment or guarantee that the CI checks must pass before publishing; that behavior depends on the workflow configuration.
 
 ## 🧪 Testing
 
@@ -220,26 +344,34 @@ Build the Docker image:
 docker build -t linkforge:test .
 ```
 
-The GitHub Actions workflow runs automated tests and build checks on pushes to `main` and pull requests targeting `main`.
+Run these commands from the repository root in an environment with Go and Docker installed.
 
 ## 🔐 Security Notes
 
-- Only HTTP and HTTPS destination URLs are accepted.
-- Request bodies are size-limited by the API handler.
-- The shortening endpoint has an in-memory rate limiter.
-- Database credentials should not be hardcoded for production deployments.
-- Public deployments should use HTTPS and appropriate proxy configuration.
-- The current rate limiter is intended for learning and small-scale use. It is process-local and needs improvements for multi-instance deployments.
-- Short links can redirect users to external destinations. Only shorten links you trust.
+- Only HTTP and HTTPS destination URLs should be accepted.
+- Request bodies should be size-limited by the API handler.
+- The shortening endpoint uses an in-memory rate limiter.
+- Database credentials should be managed securely and should not be hardcoded for production deployments.
+- Public deployments should use HTTPS and appropriate reverse-proxy configuration.
+- The current rate limiter is process-local; multi-instance deployments need a shared rate-limiting strategy.
+- Short links can redirect visitors to external destinations. Only shorten links you trust.
+- Keep PostgreSQL and internal API ports private unless direct access is explicitly required.
+- Review Trivy and `govulncheck` findings and update vulnerable dependencies where appropriate.
 
 ## 🎯 What I Learned
 
-Building LinkForge provides hands-on practice with:
+Building LinkForge provided hands-on practice with:
 
 - Designing and testing a REST API in Go.
 - Integrating Go with PostgreSQL.
 - Managing multi-container applications with Docker Compose.
-- Serving a frontend through a reverse proxy.
+- Serving application traffic through Nginx.
 - Implementing HTTP redirects and request rate limiting.
-- Automating build and test checks with GitHub Actions.
-- Debugging application behavior across containers and HTTP routes.
+- Building and publishing Docker images with GitHub Actions.
+- Using GHCR as a container image registry.
+- Automating testing, builds, and security checks in CI.
+- Debugging Docker networking, port conflicts, and container startup failures.
+
+---
+
+**LinkForge** — a hands-on project for learning Go development, containers, and practical DevOps workflows.
